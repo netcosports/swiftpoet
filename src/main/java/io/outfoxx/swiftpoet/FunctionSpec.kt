@@ -18,296 +18,310 @@ package io.outfoxx.swiftpoet
 
 /** A generated function declaration.  */
 class FunctionSpec private constructor(
-  builder: Builder
+    builder: Builder
 ) : AttributedSpec(builder.attributes.toImmutableList(), builder.tags) {
 
-  val name = builder.name
-  val doc = builder.doc.build()
-  val modifiers = builder.modifiers.toImmutableSet()
-  val typeVariables = builder.typeVariables.toImmutableList()
-  val returnType = builder.returnType
-  val parameters = builder.parameters.toImmutableList()
-  val throws = builder.throws
-  val failable = builder.failable
-  val localTypeSpecs = builder.localTypeSpecs
-  val body = if (builder.abstract) CodeBlock.ABSTRACT else builder.body.build()
+    val name = builder.name
+    val doc = builder.doc.build()
+    val modifiers = builder.modifiers.toImmutableSet()
+    val typeVariables = builder.typeVariables.toImmutableList()
+    val returnType = builder.returnType
+    val parameters = builder.parameters.toImmutableList()
+    val throws = builder.throws
+    val failable = builder.failable
+    val localTypeSpecs = builder.localTypeSpecs
+    val body = if (builder.abstract) CodeBlock.ABSTRACT else builder.body.build()
+    val isOperator = builder.isOperator
 
-  init {
-    require(name != SETTER || parameters.size <= 1) {
-      "$name must have zero or one parameter"
-    }
-  }
-
-  internal fun parameter(name: String) = parameters.firstOrNull { it.parameterName == name }
-
-  internal fun emit(
-    codeWriter: CodeWriter,
-    enclosingName: String?,
-    implicitModifiers: Set<Modifier>,
-    conciseGetter: Boolean = false
-  ) {
-    if (name == GETTER && conciseGetter && doc.isEmpty() && attributes.isEmpty() && modifiers.isEmpty()) {
-      emitLocalTypes(codeWriter)
-      codeWriter.emitCode(body)
-      return
+    init {
+        require(name != SETTER || parameters.size <= 1) {
+            "$name must have zero or one parameter"
+        }
     }
 
-    codeWriter.emitDoc(doc)
-    codeWriter.emitAttributes(attributes)
-    codeWriter.emitModifiers(modifiers, implicitModifiers)
+    internal fun parameter(name: String) = parameters.firstOrNull { it.parameterName == name }
 
-    if (!isConstructor && !name.isAccessor) {
-      codeWriter.emit("func ")
+    internal fun emit(
+        codeWriter: CodeWriter,
+        enclosingName: String?,
+        implicitModifiers: Set<Modifier>,
+        conciseGetter: Boolean = false
+    ) {
+        if (name == GETTER && conciseGetter && doc.isEmpty() && attributes.isEmpty() && modifiers.isEmpty()) {
+            emitLocalTypes(codeWriter)
+            codeWriter.emitCode(body)
+            return
+        }
+
+        codeWriter.emitDoc(doc)
+        codeWriter.emitAttributes(attributes)
+        codeWriter.emitModifiers(modifiers, implicitModifiers)
+
+        if (!isConstructor && !name.isAccessor) {
+            codeWriter.emit("func ")
+        }
+
+        emitSignature(codeWriter, enclosingName)
+        codeWriter.emitWhereBlock(typeVariables)
+
+        if (body !== CodeBlock.ABSTRACT) {
+            codeWriter.emit(" {\n")
+            codeWriter.indent()
+            emitLocalTypes(codeWriter)
+            codeWriter.emitCode(body)
+            codeWriter.unindent()
+            codeWriter.emit("}\n")
+        }
     }
 
-    emitSignature(codeWriter, enclosingName)
-    codeWriter.emitWhereBlock(typeVariables)
+    private fun emitLocalTypes(codeWriter: CodeWriter) {
+        if (localTypeSpecs.isEmpty()) {
+            return
+        }
 
-    if (body !== CodeBlock.ABSTRACT) {
-      codeWriter.emit(" {\n")
-      codeWriter.indent()
-      emitLocalTypes(codeWriter)
-      codeWriter.emitCode(body)
-      codeWriter.unindent()
-      codeWriter.emit("}\n")
-    }
-  }
+        localTypeSpecs.forEach { typeSpec ->
+            codeWriter.emit("\n")
+            typeSpec.emit(codeWriter)
+        }
 
-  private fun emitLocalTypes(codeWriter: CodeWriter) {
-    if (localTypeSpecs.isEmpty()) {
-      return
+        codeWriter.emit("\n")
     }
 
-    localTypeSpecs.forEach { typeSpec ->
-      codeWriter.emit("\n")
-      typeSpec.emit(codeWriter)
+    private fun emitSignature(codeWriter: CodeWriter, enclosingName: String?) {
+        if (isConstructor) {
+            codeWriter.emitCode(CONSTRUCTOR, enclosingName)
+            if (failable) {
+                codeWriter.emit("?")
+            }
+        } else if (name == GETTER) {
+            codeWriter.emitCode(GETTER)
+            return
+        } else if (name == SETTER) {
+            codeWriter.emitCode(SETTER)
+            if (parameters.isEmpty()) {
+                return
+            }
+        } else if (isOperator) {
+            codeWriter.emitCode("%L", name)
+        } else {
+            codeWriter.emitCode("%L", escapeIfNecessary(name))
+        }
+
+        if (typeVariables.isNotEmpty()) {
+            codeWriter.emitTypeVariables(typeVariables)
+        }
+
+        parameters.emit(codeWriter) { param ->
+            param.emit(codeWriter, includeType = name != SETTER)
+        }
+
+        if (throws) {
+            codeWriter.emit(" throws")
+        }
+
+        if (returnType != null && returnType != VOID) {
+            codeWriter.emitCode(" -> %T", returnType)
+        }
     }
 
-    codeWriter.emit("\n")
-  }
+    val isConstructor get() = name.isConstructor
 
-  private fun emitSignature(codeWriter: CodeWriter, enclosingName: String?) {
-    if (isConstructor) {
-      codeWriter.emitCode(CONSTRUCTOR, enclosingName)
-      if (failable) {
-        codeWriter.emit("?")
-      }
-    } else if (name == GETTER) {
-      codeWriter.emitCode(GETTER)
-      return
-    } else if (name == SETTER) {
-      codeWriter.emitCode(SETTER)
-      if (parameters.isEmpty()) {
-        return
-      }
-    } else {
-      codeWriter.emitCode("%L", escapeIfNecessary(name))
+    val isAccessor get() = name.isAccessor
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null) return false
+        if (javaClass != other.javaClass) return false
+        return toString() == other.toString()
     }
 
-    if (typeVariables.isNotEmpty()) {
-      codeWriter.emitTypeVariables(typeVariables)
+    override fun hashCode() = toString().hashCode()
+
+    override fun toString() = buildString {
+        emit(CodeWriter(this), "Constructor", TypeSpec.Kind.Class().implicitFunctionModifiers)
     }
 
-    parameters.emit(codeWriter) { param ->
-      param.emit(codeWriter, includeType = name != SETTER)
+    fun toBuilder(): Builder {
+        val builder = Builder(name)
+        builder.doc.add(doc)
+        builder.attributes += attributes
+        builder.modifiers += modifiers
+        builder.typeVariables += typeVariables
+        builder.returnType = returnType
+        builder.parameters += parameters
+        builder.body.add(body)
+        return builder
     }
 
-    if (throws) {
-      codeWriter.emit(" throws")
+    class Builder internal constructor(
+        internal val name: String
+    ) : Taggable.Builder<Builder>() {
+        internal val doc = CodeBlock.builder()
+        internal val attributes = mutableListOf<AttributeSpec>()
+        internal val modifiers = mutableListOf<Modifier>()
+        internal val typeVariables = mutableListOf<TypeVariableName>()
+        internal var returnType: TypeName? = null
+        internal val parameters = mutableListOf<ParameterSpec>()
+        internal var throws = false
+        internal var failable = false
+        internal val localTypeSpecs = mutableListOf<AnyTypeSpec>()
+        internal val body: CodeBlock.Builder = CodeBlock.builder()
+        internal var abstract = false
+        internal var isOperator: Boolean = false
+
+        fun addDoc(format: String, vararg args: Any) = apply {
+            doc.add(format, *args)
+        }
+
+        fun addDoc(block: CodeBlock) = apply {
+            doc.add(block)
+        }
+
+        fun addAttribute(attribute: AttributeSpec) = apply {
+            this.attributes += attribute
+        }
+
+        fun addAttribute(name: String, vararg arguments: String) = apply {
+            this.attributes += AttributeSpec.builder(name).addArguments(arguments.toList()).build()
+        }
+
+        fun addModifiers(vararg modifiers: Modifier) = apply {
+            this.modifiers += modifiers
+        }
+
+        fun addModifiers(modifiers: Iterable<Modifier>) = apply {
+            this.modifiers += modifiers
+        }
+
+        fun addTypeVariables(typeVariables: Iterable<TypeVariableName>) = apply {
+            check(!name.isAccessor) { "$name cannot have type variables" }
+            this.typeVariables += typeVariables
+        }
+
+        fun addTypeVariable(typeVariable: TypeVariableName) = apply {
+            check(!name.isAccessor) { "$name cannot have type variables" }
+            typeVariables += typeVariable
+        }
+
+        fun returns(returnType: TypeName) = apply {
+            check(!name.isConstructor && !name.isAccessor) { "$name cannot have a return type" }
+            this.returnType = returnType
+        }
+
+        fun addParameters(parameterSpecs: Iterable<ParameterSpec>) = apply {
+            for (parameterSpec in parameterSpecs) {
+                addParameter(parameterSpec)
+            }
+        }
+
+        fun addParameter(parameterSpec: ParameterSpec) = apply {
+            check(name != GETTER) { "$name cannot have parameters" }
+            check(name != SETTER || parameters.size == 0) { "$name can have only one parameter" }
+            parameters += parameterSpec
+        }
+
+        fun addParameter(name: String, type: TypeName, vararg modifiers: Modifier) =
+            addParameter(ParameterSpec.builder(name, type, *modifiers).build())
+
+        fun addParameter(label: String, name: String, type: TypeName, vararg modifiers: Modifier) =
+            addParameter(ParameterSpec.builder(label, name, type, *modifiers).build())
+
+        fun addCode(format: String, vararg args: Any) = apply {
+            body.add(format, *args)
+        }
+
+        fun abstract(value: Boolean) = apply {
+            check(body.isEmpty()) { "function with code cannot be abstract" }
+            abstract = value
+        }
+
+        fun failable(value: Boolean) = apply {
+            check(name.isConstructor) { "only constructors can be failable" }
+            failable = value
+        }
+
+        fun throws(value: Boolean) = apply {
+            throws = value
+        }
+
+        fun addLocalTypes(typeSpecs: Iterable<AnyTypeSpec>) = apply {
+            check(!abstract) { "abstract functions cannot have local types" }
+            this.localTypeSpecs += typeSpecs
+        }
+
+        fun addLocalType(typeSpec: AnyTypeSpec) = apply {
+            localTypeSpecs += typeSpec
+        }
+
+        fun addNamedCode(format: String, args: Map<String, *>) = apply {
+            check(!abstract) { "abstract functions cannot have code" }
+            body.addNamed(format, args)
+        }
+
+        fun addCode(codeBlock: CodeBlock) = apply {
+            check(!abstract) { "abstract functions cannot have code" }
+            body.add(codeBlock)
+        }
+
+        fun addComment(format: String, vararg args: Any) = apply {
+            body.add("// " + format + "\n", *args)
+        }
+
+        /**
+         * @param controlFlowName the control flow construct (e.g. "if", "switch", etc.).
+         * @param controlFlowCode code for control flow, such as "foo == 5"
+         *     Shouldn't contain braces or newline characters.
+         */
+        fun beginControlFlow(controlFlowName: String, controlFlowCode: String, vararg args: Any) = apply {
+            body.beginControlFlow(controlFlowName, controlFlowCode, *args)
+        }
+
+        /**
+         * @param controlFlowName the control flow construct (e.g. "else if").
+         * @param controlFlowCode the control flow construct and its code, such as "else if (foo == 10)".
+         *     Shouldn't contain braces or newline characters.
+         */
+        fun nextControlFlow(controlFlowName: String, controlFlowCode: String, vararg args: Any?) = apply {
+            body.nextControlFlow(controlFlowName, controlFlowCode, *args)
+        }
+
+        fun endControlFlow(controlFlowName: String) = apply {
+            body.endControlFlow(controlFlowName)
+        }
+
+        fun addStatement(format: String, vararg args: Any) = apply {
+            body.addStatement(format, *args)
+        }
+
+        fun build() = FunctionSpec(this)
     }
 
-    if (returnType != null && returnType != VOID) {
-      codeWriter.emitCode(" -> %T", returnType)
+    companion object {
+        private const val CONSTRUCTOR = "init"
+        internal const val GETTER = "get"
+        internal const val SETTER = "set"
+
+        internal val String.isConstructor get() = this == CONSTRUCTOR
+        internal val String.isAccessor get() = this.isOneOf(GETTER, SETTER)
+
+        @JvmStatic
+        fun builder(name: String) = Builder(name)
+
+        @JvmStatic
+        fun abstractBuilder(name: String) = Builder(name).abstract(true)
+
+        @JvmStatic
+        fun constructorBuilder() = Builder(CONSTRUCTOR)
+
+        @JvmStatic
+        fun getterBuilder() = Builder(GETTER)
+
+        @JvmStatic
+        fun setterBuilder() = Builder(SETTER)
+
+        @JvmStatic
+        fun operatorBuilder(name: String) = Builder(name).apply {
+            isOperator = true
+        }
     }
-  }
-
-  val isConstructor get() = name.isConstructor
-
-  val isAccessor get() = name.isAccessor
-
-  override fun equals(other: Any?): Boolean {
-    if (this === other) return true
-    if (other == null) return false
-    if (javaClass != other.javaClass) return false
-    return toString() == other.toString()
-  }
-
-  override fun hashCode() = toString().hashCode()
-
-  override fun toString() = buildString {
-    emit(CodeWriter(this), "Constructor", TypeSpec.Kind.Class().implicitFunctionModifiers)
-  }
-
-  fun toBuilder(): Builder {
-    val builder = Builder(name)
-    builder.doc.add(doc)
-    builder.attributes += attributes
-    builder.modifiers += modifiers
-    builder.typeVariables += typeVariables
-    builder.returnType = returnType
-    builder.parameters += parameters
-    builder.body.add(body)
-    return builder
-  }
-
-  class Builder internal constructor(
-    internal val name: String
-  ) : Taggable.Builder<Builder>() {
-    internal val doc = CodeBlock.builder()
-    internal val attributes = mutableListOf<AttributeSpec>()
-    internal val modifiers = mutableListOf<Modifier>()
-    internal val typeVariables = mutableListOf<TypeVariableName>()
-    internal var returnType: TypeName? = null
-    internal val parameters = mutableListOf<ParameterSpec>()
-    internal var throws = false
-    internal var failable = false
-    internal val localTypeSpecs = mutableListOf<AnyTypeSpec>()
-    internal val body: CodeBlock.Builder = CodeBlock.builder()
-    internal var abstract = false
-
-    fun addDoc(format: String, vararg args: Any) = apply {
-      doc.add(format, *args)
-    }
-
-    fun addDoc(block: CodeBlock) = apply {
-      doc.add(block)
-    }
-
-    fun addAttribute(attribute: AttributeSpec) = apply {
-      this.attributes += attribute
-    }
-
-    fun addAttribute(name: String, vararg arguments: String) = apply {
-      this.attributes += AttributeSpec.builder(name).addArguments(arguments.toList()).build()
-    }
-
-    fun addModifiers(vararg modifiers: Modifier) = apply {
-      this.modifiers += modifiers
-    }
-
-    fun addModifiers(modifiers: Iterable<Modifier>) = apply {
-      this.modifiers += modifiers
-    }
-
-    fun addTypeVariables(typeVariables: Iterable<TypeVariableName>) = apply {
-      check(!name.isAccessor) { "$name cannot have type variables" }
-      this.typeVariables += typeVariables
-    }
-
-    fun addTypeVariable(typeVariable: TypeVariableName) = apply {
-      check(!name.isAccessor) { "$name cannot have type variables" }
-      typeVariables += typeVariable
-    }
-
-    fun returns(returnType: TypeName) = apply {
-      check(!name.isConstructor && !name.isAccessor) { "$name cannot have a return type" }
-      this.returnType = returnType
-    }
-
-    fun addParameters(parameterSpecs: Iterable<ParameterSpec>) = apply {
-      for (parameterSpec in parameterSpecs) {
-        addParameter(parameterSpec)
-      }
-    }
-
-    fun addParameter(parameterSpec: ParameterSpec) = apply {
-      check(name != GETTER) { "$name cannot have parameters" }
-      check(name != SETTER || parameters.size == 0) { "$name can have only one parameter" }
-      parameters += parameterSpec
-    }
-
-    fun addParameter(name: String, type: TypeName, vararg modifiers: Modifier) =
-      addParameter(ParameterSpec.builder(name, type, *modifiers).build())
-
-    fun addParameter(label: String, name: String, type: TypeName, vararg modifiers: Modifier) =
-      addParameter(ParameterSpec.builder(label, name, type, *modifiers).build())
-
-    fun addCode(format: String, vararg args: Any) = apply {
-      body.add(format, *args)
-    }
-
-    fun abstract(value: Boolean) = apply {
-      check(body.isEmpty()) { "function with code cannot be abstract" }
-      abstract = value
-    }
-
-    fun failable(value: Boolean) = apply {
-      check(name.isConstructor) { "only constructors can be failable" }
-      failable = value
-    }
-
-    fun throws(value: Boolean) = apply {
-      throws = value
-    }
-
-    fun addLocalTypes(typeSpecs: Iterable<AnyTypeSpec>) = apply {
-      check(!abstract) { "abstract functions cannot have local types" }
-      this.localTypeSpecs += typeSpecs
-    }
-
-    fun addLocalType(typeSpec: AnyTypeSpec) = apply {
-      localTypeSpecs += typeSpec
-    }
-
-    fun addNamedCode(format: String, args: Map<String, *>) = apply {
-      check(!abstract) { "abstract functions cannot have code" }
-      body.addNamed(format, args)
-    }
-
-    fun addCode(codeBlock: CodeBlock) = apply {
-      check(!abstract) { "abstract functions cannot have code" }
-      body.add(codeBlock)
-    }
-
-    fun addComment(format: String, vararg args: Any) = apply {
-      body.add("// " + format + "\n", *args)
-    }
-
-    /**
-     * @param controlFlowName the control flow construct (e.g. "if", "switch", etc.).
-     * @param controlFlowCode code for control flow, such as "foo == 5"
-     *     Shouldn't contain braces or newline characters.
-     */
-    fun beginControlFlow(controlFlowName: String, controlFlowCode: String, vararg args: Any) = apply {
-      body.beginControlFlow(controlFlowName, controlFlowCode, *args)
-    }
-
-    /**
-     * @param controlFlowName the control flow construct (e.g. "else if").
-     * @param controlFlowCode the control flow construct and its code, such as "else if (foo == 10)".
-     *     Shouldn't contain braces or newline characters.
-     */
-    fun nextControlFlow(controlFlowName: String, controlFlowCode: String, vararg args: Any?) = apply {
-      body.nextControlFlow(controlFlowName, controlFlowCode, *args)
-    }
-
-    fun endControlFlow(controlFlowName: String) = apply {
-      body.endControlFlow(controlFlowName)
-    }
-
-    fun addStatement(format: String, vararg args: Any) = apply {
-      body.addStatement(format, *args)
-    }
-
-    fun build() = FunctionSpec(this)
-  }
-
-  companion object {
-    private const val CONSTRUCTOR = "init"
-    internal const val GETTER = "get"
-    internal const val SETTER = "set"
-
-    internal val String.isConstructor get() = this == CONSTRUCTOR
-    internal val String.isAccessor get() = this.isOneOf(GETTER, SETTER)
-
-    @JvmStatic fun builder(name: String) = Builder(name)
-
-    @JvmStatic fun abstractBuilder(name: String) = Builder(name).abstract(true)
-
-    @JvmStatic fun constructorBuilder() = Builder(CONSTRUCTOR)
-
-    @JvmStatic fun getterBuilder() = Builder(GETTER)
-
-    @JvmStatic fun setterBuilder() = Builder(SETTER)
-  }
 }
