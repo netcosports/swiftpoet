@@ -2,20 +2,19 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
   `java-library`
-  jacoco
   `maven-publish`
   signing
 
-  kotlin("jvm") version "1.4.30"
-  id("org.jetbrains.dokka") version "1.4.20"
+  kotlin("jvm") version "1.5.31"
+  id("org.jetbrains.dokka") version "1.5.31"
 
   id("net.minecrell.licenser") version "0.4.1"
   id("org.jmailen.kotlinter") version "3.3.0"
 }
 
 
-group = "io.outfoxx"
-version = "1.2.0-SNAPSHOT"
+group = "com.origins-digital"
+version = "1.1.1"
 description = "A Kotlin/Java API for generating .swift source files."
 
 val isSnapshot = "$version".endsWith("SNAPSHOT")
@@ -27,9 +26,8 @@ val isSnapshot = "$version".endsWith("SNAPSHOT")
 
 // Versions
 
-val guavaVersion = "22.0"
-val junitJupiterVersion = "5.6.2"
-val hamcrestVersion = "1.3"
+
+
 
 repositories {
   mavenCentral()
@@ -50,16 +48,18 @@ dependencies {
   // MISCELLANEOUS
   //
 
-  implementation("com.google.guava:guava:$guavaVersion")
+  implementation("com.google.guava:guava:31.0.1-jre")
 
   //
   // TESTING
   //
 
   // junit
+  val junitJupiterVersion = "5.6.2"
   testImplementation("org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion")
   testImplementation("org.junit.jupiter:junit-jupiter-engine:$junitJupiterVersion")
-  testImplementation("org.hamcrest:hamcrest-all:$hamcrestVersion")
+
+  testImplementation("org.hamcrest:hamcrest-all:1.3")
 
 }
 
@@ -89,20 +89,9 @@ tasks {
 // TEST
 //
 
-jacoco {
-  toolVersion = "0.8.5"
-}
-
 tasks {
   test {
     useJUnitPlatform()
-
-    finalizedBy(jacocoTestReport)
-    jacoco {}
-  }
-
-  jacocoTestReport {
-    dependsOn(test)
   }
 }
 
@@ -141,76 +130,24 @@ license {
 //
 
 publishing {
-
   publications {
-
     create<MavenPublication>("mavenJava") {
+      artifactId = "swiftpoet"
       from(components["java"])
-
-      pom {
-
-        name.set("Swift Poet")
-        description.set("SwiftPoet is a Kotlin and Java API for generating .swift source files.")
-        url.set("https://github.com/outfoxx/swiftpoet")
-
-        organization {
-          name.set("Outfox, Inc.")
-          url.set("https://outfoxx.io")
-        }
-
-        issueManagement {
-          system.set("GitHub")
-          url.set("https://github.com/outfoxx/swiftpoet/issues")
-        }
-
-        licenses {
-          license {
-            name.set("Apache License 2.0")
-            url.set("https://raw.githubusercontent.com/outfoxx/swiftpoet/master/LICENSE.txt")
-            distribution.set("repo")
-          }
-        }
-
-        scm {
-          url.set("https://github.com/outfoxx/swiftpoet")
-          connection.set("scm:https://github.com/outfoxx/swiftpoet.git")
-          developerConnection.set("scm:git@github.com:outfoxx/swiftpoet.git")
-        }
-
-        developers {
-          developer {
-            id.set("kdubb")
-            name.set("Kevin Wooten")
-            email.set("kevin@outfoxx.io")
-          }
-        }
-
-      }
     }
-
   }
 
   repositories {
-
     maven {
-      val snapshotUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
-      val releaseUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-      url = uri(if (isSnapshot) snapshotUrl else releaseUrl)
+      url = uri("https://artifactory-blr.netcodev.com/artifactory/libs-release-local")
 
       credentials {
-        username = project.findProperty("ossrhUsername")?.toString()
-        password = project.findProperty("ossrhPassword")?.toString()
+        username = project.findProperty("repoUsername")?.toString()
+        password = project.findProperty("repoPassword")?.toString()
       }
     }
-
   }
-
 }
 
 
-signing {
-  gradle.taskGraph.whenReady {
-    isRequired = hasTask("publishMavenJavaPublicationToMavenRepository")
-  }
-  sign(publishing.publications["mavenJava"])
-}
+
